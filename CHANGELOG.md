@@ -2,6 +2,46 @@
 
 All notable changes to `laravel-concurrent-limiter` will be documented in this file.
 
+## v3.0.0 - 2026-01-16
+
+### Breaking Changes
+
+1. **Event renamed**: `ConcurrentLimitWaiting` → `ConcurrentLimitWaitStarted`
+   
+   - Update your listeners to use the new event name
+   
+2. **New method in MetricsCollector interface**: `incrementWaitingTotal()`
+   
+   - Custom implementations must add this method
+   
+
+### Added
+
+- `ConcurrentLimitAcquired` event - dispatched when a request acquires a slot
+- `incrementWaitingTotal()` method in MetricsCollector interface
+- Cache key structure documentation in README
+
+### Fixed
+
+- `request()` call in JobConcurrentLimiter causing RuntimeException in queue context
+- Request is now nullable in `CacheOperationFailed` event
+
+### Changed
+
+- `handleWaitStarted()` implemented in MetricsEventSubscriber (was empty)
+- Updated CLAUDE.md with correct structure and test counts
+
+### Full Changelog
+
+**Events:**
+| Event | When | Properties |
+|-------|------|------------|
+| `ConcurrentLimitWaitStarted` | Request starts waiting | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitAcquired` | Request acquires slot | `$request`, `$waitedSeconds`, `$key` |
+| `ConcurrentLimitExceeded` | Timeout reached | `$request`, `$waitedSeconds`, `$maxParallel`, `$key` |
+| `ConcurrentLimitReleased` | Request completed | `$request`, `$processingTime`, `$key` |
+| `CacheOperationFailed` | Cache operation fails | `$request` (nullable), `$exception` |
+
 ## v2.1.0 - 2026-01-16
 
 ### Added
@@ -28,23 +68,27 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 ### Added
 
 - **Job Middleware** (`JobConcurrentLimiter`):
+  
   - Limit concurrent execution of queued jobs
   - Parameters: `maxParallel`, `key`, `releaseAfter`, `shouldRelease`
   - Auto-release jobs back to queue when limit exceeded
   - Share limits across job classes using the same key
-
+  
 - **Prometheus Metrics**:
+  
   - `concurrent_limiter_requests_total` counter
   - `concurrent_limiter_exceeded_total` counter
   - `concurrent_limiter_cache_failures_total` counter
   - `concurrent_limiter_wait_seconds` histogram
   - Configurable `/metrics` HTTP endpoint
   - Event subscriber for automatic metric collection
-
+  
 - New config options:
+  
   - `metrics.enabled` - Enable/disable metrics collection
   - `metrics.route` - Custom route path for metrics endpoint
   - `metrics.middleware` - Middleware for metrics endpoint
+  
 
 ## v1.3.0 - 2026-01-16
 
@@ -54,6 +98,7 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 - **Artisan commands**:
   - `concurrent-limiter:status {key}` - Check current counter value
   - `concurrent-limiter:clear {key}` - Clear stuck counters
+  
 - **CacheOperationFailed event**: Dispatched when cache operations fail, for monitoring
 
 ### Changed
@@ -72,6 +117,7 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
   - Custom ResponseHandler guide with HTML response example
   - Cache store recommendations table
   - Troubleshooting section
+  
 
 ### Changed
 
@@ -117,7 +163,7 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 - `ResponseHandler` interface with `DefaultResponseHandler` (503 JSON + Retry-After header)
   
 - Events for monitoring:
-
+  
   - `ConcurrentLimitWaitStarted` - dispatched when a request starts waiting
   - `ConcurrentLimitExceeded` - dispatched when timeout is reached
   - `ConcurrentLimitReleased` - dispatched after request completion
@@ -176,7 +222,7 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 - `ResponseHandler` interface with `DefaultResponseHandler` (503 JSON + Retry-After header)
   
 - Events for monitoring:
-
+  
   - `ConcurrentLimitWaitStarted` - dispatched when a request starts waiting
   - `ConcurrentLimitExceeded` - dispatched when timeout is reached
   - `ConcurrentLimitReleased` - dispatched after request completion
