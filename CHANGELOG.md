@@ -2,6 +2,23 @@
 
 All notable changes to `laravel-concurrent-limiter` will be documented in this file.
 
+## v1.2.0 - 2026-01-16
+
+### Added
+
+- Parameter validation: `maxParallel` must be >= 1, `maxWaitTime` must be >= 0
+- Comprehensive README documentation:
+  - Events section with listener examples
+  - Custom KeyResolver guide with multi-tenant example
+  - Custom ResponseHandler guide with HTML response example
+  - Cache store recommendations table
+  - Troubleshooting section
+
+### Changed
+
+- Improved error message in `DefaultKeyResolver` with debugging suggestions
+- Updated CLAUDE.md with correct PHP/Laravel version references
+
 ## v1.1.1 - 2026-01-16
 
 ### Removed
