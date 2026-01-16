@@ -26,7 +26,7 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
   - `logging` - automatic logging when limits exceeded
 - Static helper `LaravelConcurrentLimiter::with(maxParallel, maxWaitTime, prefix)`
 - Middleware alias `concurrent.limit`
-- Support for PHP 8.2, 8.3, 8.4
+- Support for PHP 8.3, 8.4
 - Support for Laravel 11.x and 12.x
 - PHPStan level 9 compliance with strict rules
 - 33 tests with Pest PHP (architecture, service provider, middleware)
