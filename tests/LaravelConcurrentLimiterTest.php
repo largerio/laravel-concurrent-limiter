@@ -9,7 +9,7 @@ use Largerio\LaravelConcurrentLimiter\Contracts\ResponseHandler;
 use Largerio\LaravelConcurrentLimiter\Events\CacheOperationFailed;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitExceeded;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitReleased;
-use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaiting;
+use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaitStarted;
 use Largerio\LaravelConcurrentLimiter\LaravelConcurrentLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -254,8 +254,8 @@ it('dispatches ConcurrentLimitExceeded event when limit is exceeded', function (
     });
 });
 
-it('dispatches ConcurrentLimitWaiting event when request is queued', function () {
-    Event::fake([ConcurrentLimitWaiting::class, ConcurrentLimitExceeded::class]);
+it('dispatches ConcurrentLimitWaitStarted event when request is queued', function () {
+    Event::fake([ConcurrentLimitWaitStarted::class, ConcurrentLimitExceeded::class]);
 
     $middleware = app(LaravelConcurrentLimiter::class);
     $request = Request::create('/test', 'GET');
@@ -267,7 +267,7 @@ it('dispatches ConcurrentLimitWaiting event when request is queued', function ()
 
     $middleware->handle($request, fn () => response()->json(['ok' => true]), 5, 1);
 
-    Event::assertDispatched(ConcurrentLimitWaiting::class, function ($event) {
+    Event::assertDispatched(ConcurrentLimitWaitStarted::class, function ($event) {
         return $event->currentCount === 11 && $event->maxParallel === 5;
     });
 });

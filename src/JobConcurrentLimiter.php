@@ -93,7 +93,7 @@ class JobConcurrentLimiter implements JobLimiter
      */
     protected function handleCacheFailure(object $job, Closure $next, Throwable $exception): void
     {
-        CacheOperationFailed::dispatch(request(), $exception);
+        CacheOperationFailed::dispatch(null, $exception);
 
         /** @var string $onCacheFailure */
         $onCacheFailure = config('concurrent-limiter.on_cache_failure', 'allow');

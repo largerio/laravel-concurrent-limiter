@@ -45,6 +45,11 @@ class PrometheusMetricsCollector implements MetricsCollector
         $this->incrementCounter('cache_failures_total', 'all');
     }
 
+    public function incrementWaitingTotal(string $key = 'all'): void
+    {
+        $this->incrementCounter('waiting_total', $key);
+    }
+
     public function recordWaitTime(float $seconds, string $key = 'all'): void
     {
         $buckets = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];

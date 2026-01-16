@@ -15,9 +15,10 @@ use Largerio\LaravelConcurrentLimiter\Contracts\ConcurrentLimiter;
 use Largerio\LaravelConcurrentLimiter\Contracts\KeyResolver;
 use Largerio\LaravelConcurrentLimiter\Contracts\ResponseHandler;
 use Largerio\LaravelConcurrentLimiter\Events\CacheOperationFailed;
+use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitAcquired;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitExceeded;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitReleased;
-use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaiting;
+use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaitStarted;
 use Largerio\LaravelConcurrentLimiter\KeyResolvers\DefaultKeyResolver;
 use Largerio\LaravelConcurrentLimiter\ResponseHandlers\DefaultResponseHandler;
 use Psr\Log\LoggerInterface;
@@ -88,7 +89,7 @@ class LaravelConcurrentLimiter implements ConcurrentLimiter
 
         while ($current > $maxParallel) {
             if (! $hasWaited) {
-                ConcurrentLimitWaiting::dispatch($request, $current, $maxParallel, $key);
+                ConcurrentLimitWaitStarted::dispatch($request, $current, $maxParallel, $key);
                 $hasWaited = true;
             }
 
@@ -113,6 +114,9 @@ class LaravelConcurrentLimiter implements ConcurrentLimiter
                 return $this->handleCacheFailure($request, $e, $maxWaitTime);
             }
         }
+
+        $waitedSeconds = microtime(true) - $startTime;
+        ConcurrentLimitAcquired::dispatch($request, $waitedSeconds, $key);
 
         $processingStartTime = microtime(true);
 

@@ -117,8 +117,8 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 - `ResponseHandler` interface with `DefaultResponseHandler` (503 JSON + Retry-After header)
   
 - Events for monitoring:
-  
-  - `ConcurrentLimitWaiting` - dispatched when a request starts waiting
+
+  - `ConcurrentLimitWaitStarted` - dispatched when a request starts waiting
   - `ConcurrentLimitExceeded` - dispatched when timeout is reached
   - `ConcurrentLimitReleased` - dispatched after request completion
   
@@ -176,8 +176,8 @@ All notable changes to `laravel-concurrent-limiter` will be documented in this f
 - `ResponseHandler` interface with `DefaultResponseHandler` (503 JSON + Retry-After header)
   
 - Events for monitoring:
-  
-  - `ConcurrentLimitWaiting` - dispatched when a request starts waiting
+
+  - `ConcurrentLimitWaitStarted` - dispatched when a request starts waiting
   - `ConcurrentLimitExceeded` - dispatched when timeout is reached
   - `ConcurrentLimitReleased` - dispatched after request completion
   

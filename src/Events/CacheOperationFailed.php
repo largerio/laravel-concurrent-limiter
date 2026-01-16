@@ -14,8 +14,12 @@ class CacheOperationFailed
     use Dispatchable;
     use SerializesModels;
 
+    /**
+     * @param  Request|null  $request  The HTTP request (null for job context)
+     * @param  Throwable  $exception  The exception that occurred
+     */
     public function __construct(
-        public Request $request,
+        public ?Request $request,
         public Throwable $exception
     ) {}
 }

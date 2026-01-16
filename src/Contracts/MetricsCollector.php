@@ -22,6 +22,11 @@ interface MetricsCollector
     public function incrementCacheFailuresTotal(): void;
 
     /**
+     * Increment the waiting requests counter.
+     */
+    public function incrementWaitingTotal(string $key = 'all'): void;
+
+    /**
      * Record wait time in histogram buckets.
      */
     public function recordWaitTime(float $seconds, string $key = 'all'): void;

@@ -9,7 +9,7 @@ use Largerio\LaravelConcurrentLimiter\Contracts\MetricsCollector;
 use Largerio\LaravelConcurrentLimiter\Events\CacheOperationFailed;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitExceeded;
 use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitReleased;
-use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaiting;
+use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitWaitStarted;
 
 class MetricsEventSubscriber
 {
@@ -17,10 +17,9 @@ class MetricsEventSubscriber
         protected MetricsCollector $collector
     ) {}
 
-    public function handleWaiting(ConcurrentLimitWaiting $event): void
+    public function handleWaitStarted(ConcurrentLimitWaitStarted $event): void
     {
-        // Track that a request started waiting
-        // The actual wait time will be recorded in handleReleased or handleExceeded
+        $this->collector->incrementWaitingTotal($event->key);
     }
 
     public function handleExceeded(ConcurrentLimitExceeded $event): void
@@ -45,7 +44,7 @@ class MetricsEventSubscriber
     public function subscribe(Dispatcher $events): array
     {
         return [
-            ConcurrentLimitWaiting::class => 'handleWaiting',
+            ConcurrentLimitWaitStarted::class => 'handleWaitStarted',
             ConcurrentLimitExceeded::class => 'handleExceeded',
             ConcurrentLimitReleased::class => 'handleReleased',
             CacheOperationFailed::class => 'handleCacheFailure',

@@ -17,24 +17,41 @@ This document provides guidance for AI assistants working with the Laravel Concu
 
 ```
 ├── src/
+│   ├── Commands/
+│   │   ├── ClearCommand.php             # Clear stuck counters
+│   │   └── StatusCommand.php            # Check counter status
+│   ├── Concerns/
+│   │   └── HasAtomicCacheOperations.php # Shared cache operations trait
 │   ├── Contracts/
-│   │   ├── ConcurrentLimiter.php        # Main interface
+│   │   ├── ConcurrentLimiter.php        # HTTP middleware interface
+│   │   ├── JobLimiter.php               # Job middleware interface
 │   │   ├── KeyResolver.php              # Key resolution interface
+│   │   ├── MetricsCollector.php         # Metrics collection interface
 │   │   └── ResponseHandler.php          # Response handling interface
 │   ├── Events/
-│   │   ├── ConcurrentLimitWaiting.php   # Dispatched when request waits
+│   │   ├── CacheOperationFailed.php     # Dispatched on cache failure
+│   │   ├── ConcurrentLimitAcquired.php  # Dispatched when slot acquired
 │   │   ├── ConcurrentLimitExceeded.php  # Dispatched on timeout
-│   │   └── ConcurrentLimitReleased.php  # Dispatched after completion
+│   │   ├── ConcurrentLimitReleased.php  # Dispatched after completion
+│   │   └── ConcurrentLimitWaitStarted.php  # Dispatched when request waits
 │   ├── KeyResolvers/
 │   │   └── DefaultKeyResolver.php       # Default: user ID or IP
+│   ├── Metrics/
+│   │   ├── MetricsController.php        # Prometheus metrics endpoint
+│   │   ├── MetricsEventSubscriber.php   # Event-driven metrics collection
+│   │   └── PrometheusMetricsCollector.php # Prometheus format collector
 │   ├── ResponseHandlers/
 │   │   └── DefaultResponseHandler.php   # Default: 503 JSON response
-│   ├── LaravelConcurrentLimiter.php     # Core middleware class
+│   ├── JobConcurrentLimiter.php         # Job queue middleware
+│   ├── LaravelConcurrentLimiter.php     # HTTP middleware
 │   └── LaravelConcurrentLimiterServiceProvider.php
 ├── tests/
-│   ├── ArchTest.php                     # Architecture tests (8 tests)
+│   ├── ArchTest.php                     # Architecture tests (11 tests)
+│   ├── CommandsTest.php                 # CLI command tests (7 tests)
+│   ├── JobConcurrentLimiterTest.php     # Job middleware tests (8 tests)
+│   ├── LaravelConcurrentLimiterTest.php # HTTP middleware tests (26 tests)
+│   ├── MetricsTest.php                  # Metrics tests (8 tests)
 │   ├── ServiceProviderTest.php          # Service provider tests (5 tests)
-│   ├── LaravelConcurrentLimiterTest.php # Middleware tests (20 tests)
 │   ├── TestCase.php                     # Base test case
 │   └── Pest.php                         # Pest configuration
 ├── config/
@@ -51,7 +68,7 @@ This document provides guidance for AI assistants working with the Laravel Concu
 ## Development Commands
 
 ```bash
-composer test           # Run tests (33 tests)
+composer test           # Run tests (65+ tests)
 composer test-coverage  # Run tests with coverage
 composer analyse        # PHPStan level 9 (strict mode)
 composer format         # Laravel Pint code styling
@@ -69,15 +86,34 @@ Route::middleware('concurrent.limit:10,30,api')->group(...);
 Route::middleware(LaravelConcurrentLimiter::with(10, 30, 'api'))->group(...);
 ```
 
+### Job Middleware
+
+```php
+// In your job class
+public function middleware(): array
+{
+    return [
+        new JobConcurrentLimiter(
+            maxParallel: 5,
+            key: 'my-job-type',
+            releaseAfter: 30,
+            shouldRelease: true
+        ),
+    ];
+}
+```
+
 ### Events
 
-The middleware dispatches three events:
+The middleware dispatches five events:
 
 | Event | When | Properties |
 |-------|------|------------|
-| `ConcurrentLimitWaiting` | Request starts waiting | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitWaitStarted` | Request starts waiting | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitAcquired` | Request acquires slot | `$request`, `$waitedSeconds`, `$key` |
 | `ConcurrentLimitExceeded` | Timeout reached | `$request`, `$waitedSeconds`, `$maxParallel`, `$key` |
 | `ConcurrentLimitReleased` | Request completed | `$request`, `$processingTime`, `$key` |
+| `CacheOperationFailed` | Cache operation fails | `$request` (nullable), `$exception` |
 
 ### Extensibility
 
@@ -125,10 +161,13 @@ Custom response handling:
 
 ```php
 arch('contracts are interfaces')
+arch('concerns are traits')
 arch('events use Dispatchable trait')
 arch('key resolvers implement KeyResolver interface')
 arch('response handlers implement ResponseHandler interface')
 arch('middleware implements ConcurrentLimiter interface')
+arch('job middleware implements JobLimiter interface')
+arch('prometheus metrics collector implements MetricsCollector interface')
 arch('source code has strict types')
 arch('no debugging functions')
 arch('no dependencies on laravel internals')

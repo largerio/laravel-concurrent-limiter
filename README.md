@@ -66,13 +66,15 @@ Feel free to customize the default settings.
 
 ## Events
 
-The middleware dispatches three events that you can listen to for monitoring and logging:
+The middleware dispatches events for monitoring and logging:
 
 | Event | When | Properties |
 |-------|------|------------|
-| `ConcurrentLimitWaiting` | Request starts waiting for a slot | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitWaitStarted` | Request starts waiting for a slot | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitAcquired` | Request acquires a slot | `$request`, `$waitedSeconds`, `$key` |
 | `ConcurrentLimitExceeded` | Timeout reached, returning 503 | `$request`, `$waitedSeconds`, `$maxParallel`, `$key` |
 | `ConcurrentLimitReleased` | Request completed successfully | `$request`, `$processingTime`, `$key` |
+| `CacheOperationFailed` | Cache operation fails | `$request` (nullable), `$exception` |
 
 Example listener:
 
@@ -173,6 +175,20 @@ Configure your preferred store in `config/concurrent-limiter.php`:
 ```php
 'cache_store' => 'redis', // or null to use default
 ```
+
+## Cache Key Structure
+
+The middleware uses the following cache key patterns:
+
+| Context | Pattern | Example |
+|---------|---------|---------|
+| HTTP requests | `{prefix}{custom_prefix}{user_id\|ip_hash}` | `concurrent-limiter:api:abc123` |
+| Job queue | `{prefix}job:{key}` | `concurrent-limiter:job:stripe-api` |
+| Locks | `{key}:lock` | `concurrent-limiter:api:abc123:lock` |
+
+- `{prefix}` is the configured `cache_prefix` (default: `concurrent-limiter:`)
+- `{custom_prefix}` is the optional prefix passed to the middleware
+- `{user_id|ip_hash}` is the SHA1 hash of the user ID or IP address
 
 ## Artisan Commands
 
