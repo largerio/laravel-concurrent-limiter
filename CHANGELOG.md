@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-concurrent-limiter` will be documented in this file.
 
+## v1.1.1 - 2026-01-16
+
+### Removed
+
+- Unused `spatie/laravel-ray` dev dependency
+
 ## v1.1.0 - 2026-01-16
 
 ### Added
