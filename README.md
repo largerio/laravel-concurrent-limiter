@@ -5,226 +5,93 @@
 [![PHPStan](https://img.shields.io/github/actions/workflow/status/largerio/laravel-concurrent-limiter/phpstan.yml?branch=main&label=phpstan&style=flat-square)](https://github.com/largerio/laravel-concurrent-limiter/actions/workflows/phpstan.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/largerio/laravel-concurrent-limiter.svg?style=flat-square)](https://packagist.org/packages/largerio/laravel-concurrent-limiter)
 
-**Laravel Concurrent Limiter** is a Laravel middleware package that limits the number of concurrent requests per user (or IP when unauthenticated). It delays incoming requests until a slot is free or returns a 503 error if the wait exceeds a defined maximum time.
+A Laravel middleware package that limits the number of **concurrent** requests per user (or IP). Unlike rate limiting which counts requests over time, this package controls how many requests can be processed **simultaneously**.
+
+## Features
+
+- **HTTP Middleware** - Limit concurrent requests per user/IP with automatic queuing
+- **Job Middleware** - Limit concurrent queue job execution to protect external APIs
+- **Prometheus Metrics** - Built-in `/metrics` endpoint for monitoring
+- **Fail-safe** - Configurable behavior when cache is unavailable
+- **Events** - Full request lifecycle tracking (wait, acquire, release, exceed)
+- **Extensible** - Custom key resolvers and response handlers
+
+## Requirements
+
+- PHP 8.3 or higher
+- Laravel 11.x or 12.x
+- Cache store with atomic operations (Redis recommended)
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [HTTP Middleware](#http-middleware)
+- [Job Middleware](#job-middleware)
+- [Configuration](#configuration)
+- [Events](#events)
+- [Custom Key Resolver](#custom-key-resolver)
+- [Custom Response Handler](#custom-response-handler)
+- [Prometheus Metrics](#prometheus-metrics)
+- [Cache](#cache)
+- [Artisan Commands](#artisan-commands)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+## Quick Start
+
+```php
+// routes/api.php
+Route::middleware('concurrent.limit:5,30')->group(function () {
+    Route::get('/heavy-endpoint', HeavyController::class);
+});
+```
+
+This limits each user to **5 concurrent requests**, waiting up to **30 seconds** for a slot before returning 503.
 
 ## Installation
 
-You can install the package via Composer:
+Install via Composer:
 
 ```bash
 composer require largerio/laravel-concurrent-limiter
 ```
 
-If your Laravel version does not auto-discover the service provider, add it to your `config/app.php` providers array:
-
-```php
-Largerio\LaravelConcurrentLimiter\LaravelConcurrentLimiterServiceProvider::class,
-```
-
-## Usage
-
-Apply the middleware to your routes using the alias `concurrent.limit`. The middleware accepts three parameters:
-- **maxParallel**: Maximum concurrent requests allowed.
-- **maxWaitTime**: Maximum time (in seconds) to wait for a slot.
-- **prefix**: An optional string to prefix the cache key.
-
-For example, to allow a maximum of 10 parallel requests per user (or IP) and wait up to 30 seconds for a slot:
-
-```php
-use Illuminate\Support\Facades\Route;
-
-Route::middleware('concurrent.limit:10,30,api')->group(function () {
-    Route::get('/data', [\App\Http\Controllers\DataController::class, 'index']);
-});
-```
-
-You can also use the static helper to generate the middleware definition:
-
-```php
-LaravelConcurrentLimiter::with(10, 30, 'api');
-```
-
-## How It Works
-
-When a request enters the middleware, it:
-- Generates a unique key based on the authenticated user ID or the request IP.
-- Increments a counter in the cache.
-- If the counter exceeds the maximum allowed, it waits (checking every 100ms) until a slot is free or the maximum wait time is reached.
-- If the wait time is exceeded, it returns a 503 error with a JSON message.
-
-After processing, the counter is decremented.
-
-## Configuration
-
-The package provides a config file that you can publish:
+The service provider is auto-discovered. To publish the config file:
 
 ```bash
 php artisan vendor:publish --provider="Largerio\LaravelConcurrentLimiter\LaravelConcurrentLimiterServiceProvider" --tag="config"
 ```
 
-Feel free to customize the default settings.
+## HTTP Middleware
 
-## Events
-
-The middleware dispatches events for monitoring and logging:
-
-| Event | When | Properties |
-|-------|------|------------|
-| `ConcurrentLimitWaitStarted` | Request starts waiting for a slot | `$request`, `$currentCount`, `$maxParallel`, `$key` |
-| `ConcurrentLimitAcquired` | Request acquires a slot | `$request`, `$waitedSeconds`, `$key` |
-| `ConcurrentLimitExceeded` | Timeout reached, returning 503 | `$request`, `$waitedSeconds`, `$maxParallel`, `$key` |
-| `ConcurrentLimitReleased` | Request completed successfully | `$request`, `$processingTime`, `$key` |
-| `CacheOperationFailed` | Cache operation fails | `$request` (nullable), `$exception` |
-
-Example listener:
+Apply the middleware to routes using the `concurrent.limit` alias:
 
 ```php
-use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitExceeded;
+use Illuminate\Support\Facades\Route;
 
-class LogConcurrentLimitExceeded
-{
-    public function handle(ConcurrentLimitExceeded $event): void
-    {
-        Log::warning('Concurrent limit exceeded', [
-            'key' => $event->key,
-            'waited_seconds' => $event->waitedSeconds,
-            'url' => $event->request->fullUrl(),
-        ]);
-    }
-}
+// Parameters: maxParallel, maxWaitTime, prefix
+Route::middleware('concurrent.limit:10,30,api')->group(function () {
+    Route::get('/data', [DataController::class, 'index']);
+});
 ```
 
-## Custom Key Resolver
-
-By default, the middleware uses the authenticated user ID or the request IP to generate a unique key. You can customize this behavior by implementing your own `KeyResolver`.
-
-Example: Multi-tenant key resolver
+Or use the static helper:
 
 ```php
-namespace App\Limiters;
+use Largerio\LaravelConcurrentLimiter\LaravelConcurrentLimiter;
 
-use Illuminate\Http\Request;
-use Largerio\LaravelConcurrentLimiter\Contracts\KeyResolver;
-
-class TenantKeyResolver implements KeyResolver
-{
-    public function resolve(Request $request): string
-    {
-        $tenantId = $request->header('X-Tenant-ID') ?? 'default';
-        $userId = $request->user()?->id ?? $request->ip();
-
-        return sha1($tenantId . ':' . $userId);
-    }
-}
+Route::middleware(LaravelConcurrentLimiter::with(10, 30, 'api'))->group(function () {
+    // ...
+});
 ```
 
-Register it in your config:
-
-```php
-// config/concurrent-limiter.php
-'key_resolver' => App\Limiters\TenantKeyResolver::class,
-```
-
-## Custom Response Handler
-
-You can customize the 503 response by implementing your own `ResponseHandler`.
-
-Example: HTML response instead of JSON
-
-```php
-namespace App\Limiters;
-
-use Illuminate\Http\Request;
-use Largerio\LaravelConcurrentLimiter\Contracts\ResponseHandler;
-use Symfony\Component\HttpFoundation\Response;
-
-class HtmlResponseHandler implements ResponseHandler
-{
-    public function handle(Request $request, float $waitedSeconds, int $maxWaitTime): Response
-    {
-        return response()->view('errors.503-concurrent', [
-            'waited' => $waitedSeconds,
-            'maxWait' => $maxWaitTime,
-        ], 503)->header('Retry-After', (string) $maxWaitTime);
-    }
-}
-```
-
-Register it in your config:
-
-```php
-// config/concurrent-limiter.php
-'response_handler' => App\Limiters\HtmlResponseHandler::class,
-```
-
-## Cache Store Recommendations
-
-The middleware requires a cache store that supports atomic operations. Recommendations:
-
-| Cache Store | Production Ready | Notes |
-|-------------|------------------|-------|
-| **Redis** | ✅ Yes | Best choice. Supports locks for atomic operations. |
-| **Memcached** | ✅ Yes | Good alternative to Redis. |
-| **DynamoDB** | ✅ Yes | Works with Laravel DynamoDB cache driver. |
-| **Database** | ⚠️ Limited | Works but may cause contention under high load. |
-| **File** | ❌ No | No locking support. Race conditions possible. |
-| **Array** | ❌ No | Only for testing. Data lost between requests. |
-
-Configure your preferred store in `config/concurrent-limiter.php`:
-
-```php
-'cache_store' => 'redis', // or null to use default
-```
-
-## Cache Key Structure
-
-The middleware uses the following cache key patterns:
-
-| Context | Pattern | Example |
-|---------|---------|---------|
-| HTTP requests | `{prefix}{custom_prefix}{user_id\|ip_hash}` | `concurrent-limiter:api:abc123` |
-| Job queue | `{prefix}job:{key}` | `concurrent-limiter:job:stripe-api` |
-| Locks | `{key}:lock` | `concurrent-limiter:api:abc123:lock` |
-
-- `{prefix}` is the configured `cache_prefix` (default: `concurrent-limiter:`)
-- `{custom_prefix}` is the optional prefix passed to the middleware
-- `{user_id|ip_hash}` is the SHA1 hash of the user ID or IP address
-
-## Artisan Commands
-
-The package includes two Artisan commands for debugging and maintenance:
-
-### Check Counter Status
-
-```bash
-php artisan concurrent-limiter:status {key}
-```
-
-Shows the current counter value for a given key. The key is typically a SHA1 hash of the user ID or IP address.
-
-```bash
-# Example output
-Key: concurrent-limiter:abc123...
-Current count: 3
-Max parallel: 10
-Status: 3/10 slots in use
-```
-
-### Clear Stuck Counters
-
-```bash
-php artisan concurrent-limiter:clear {key} [--force]
-```
-
-Clears a stuck counter (e.g., if your app crashed before decrementing). Use `--force` to skip confirmation.
-
-```bash
-# With confirmation
-php artisan concurrent-limiter:clear abc123
-
-# Skip confirmation
-php artisan concurrent-limiter:clear abc123 --force
-```
+**How it works:**
+1. Generates a unique key based on user ID (or IP if unauthenticated)
+2. Increments a counter in cache
+3. If over limit, waits (polling every 100ms) until a slot is free
+4. If timeout reached, returns 503 with JSON error
+5. After processing, decrements the counter
 
 ## Job Middleware
 
@@ -243,7 +110,7 @@ class ProcessPayment implements ShouldQueue
             new JobConcurrentLimiter(
                 maxParallel: 5,        // Max 5 concurrent jobs
                 key: 'stripe-api',     // Shared key for all Stripe jobs
-                releaseAfter: 30,      // Retry after 30 seconds if limit reached
+                releaseAfter: 30,      // Retry after 30 seconds if limited
                 shouldRelease: true    // Auto-release job back to queue
             ),
         ];
@@ -270,6 +137,116 @@ class ProcessPayment implements ShouldQueue
 - Prevent database overload from batch processing
 - Control concurrent file processing or exports
 
+## Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `max_parallel` | 10 | Maximum concurrent requests per user |
+| `max_wait_time` | 30 | Seconds to wait before returning 503 |
+| `ttl_buffer` | 60 | Extra TTL seconds for cache safety |
+| `cache_prefix` | `concurrent-limiter:` | Cache key prefix |
+| `cache_store` | null | Cache store (null = default) |
+| `error_message` | "Too many concurrent..." | 503 response message |
+| `retry_after` | true | Include Retry-After header |
+| `key_resolver` | null | Custom KeyResolver class |
+| `response_handler` | null | Custom ResponseHandler class |
+| `on_cache_failure` | 'allow' | Behavior on cache failure: 'allow' or 'reject' |
+| `logging.enabled` | false | Log when limits are exceeded |
+| `logging.channel` | null | Log channel (null = default) |
+| `logging.level` | 'warning' | Log level |
+| `metrics.enabled` | false | Enable Prometheus metrics endpoint |
+| `metrics.route` | '/concurrent-limiter/metrics' | Metrics endpoint path |
+| `metrics.middleware` | [] | Middleware for metrics endpoint |
+
+## Events
+
+The middleware dispatches events for monitoring and logging:
+
+| Event | When | Properties |
+|-------|------|------------|
+| `ConcurrentLimitWaitStarted` | Request starts waiting for a slot | `$request`, `$currentCount`, `$maxParallel`, `$key` |
+| `ConcurrentLimitAcquired` | Request acquires a slot | `$request`, `$waitedSeconds`, `$key` |
+| `ConcurrentLimitExceeded` | Timeout reached, returning 503 | `$request`, `$waitedSeconds`, `$maxParallel`, `$key` |
+| `ConcurrentLimitReleased` | Request completed | `$request`, `$processingTime`, `$key` |
+| `CacheOperationFailed` | Cache operation fails | `$request` (nullable), `$exception` |
+
+Example listener:
+
+```php
+use Largerio\LaravelConcurrentLimiter\Events\ConcurrentLimitExceeded;
+
+class LogConcurrentLimitExceeded
+{
+    public function handle(ConcurrentLimitExceeded $event): void
+    {
+        Log::warning('Concurrent limit exceeded', [
+            'key' => $event->key,
+            'waited_seconds' => $event->waitedSeconds,
+            'url' => $event->request->fullUrl(),
+        ]);
+    }
+}
+```
+
+## Custom Key Resolver
+
+By default, the middleware uses the authenticated user ID or IP address. Implement `KeyResolver` to customize:
+
+```php
+namespace App\Limiters;
+
+use Illuminate\Http\Request;
+use Largerio\LaravelConcurrentLimiter\Contracts\KeyResolver;
+
+class TenantKeyResolver implements KeyResolver
+{
+    public function resolve(Request $request): string
+    {
+        $tenantId = $request->header('X-Tenant-ID') ?? 'default';
+        $userId = $request->user()?->id ?? $request->ip();
+
+        return sha1($tenantId . ':' . $userId);
+    }
+}
+```
+
+Register in config:
+
+```php
+// config/concurrent-limiter.php
+'key_resolver' => App\Limiters\TenantKeyResolver::class,
+```
+
+## Custom Response Handler
+
+Customize the 503 response by implementing `ResponseHandler`:
+
+```php
+namespace App\Limiters;
+
+use Illuminate\Http\Request;
+use Largerio\LaravelConcurrentLimiter\Contracts\ResponseHandler;
+use Symfony\Component\HttpFoundation\Response;
+
+class HtmlResponseHandler implements ResponseHandler
+{
+    public function handle(Request $request, float $waitedSeconds, int $maxWaitTime): Response
+    {
+        return response()->view('errors.503-concurrent', [
+            'waited' => $waitedSeconds,
+            'maxWait' => $maxWaitTime,
+        ], 503)->header('Retry-After', (string) $maxWaitTime);
+    }
+}
+```
+
+Register in config:
+
+```php
+// config/concurrent-limiter.php
+'response_handler' => App\Limiters\HtmlResponseHandler::class,
+```
+
 ## Prometheus Metrics
 
 Enable Prometheus-compatible metrics for monitoring:
@@ -279,7 +256,7 @@ Enable Prometheus-compatible metrics for monitoring:
 'metrics' => [
     'enabled' => true,
     'route' => '/concurrent-limiter/metrics',
-    'middleware' => ['auth:api'], // Protect the endpoint
+    'middleware' => ['auth:api'],
 ],
 ```
 
@@ -312,14 +289,43 @@ concurrent_limiter_wait_seconds_sum 156.234
 concurrent_limiter_wait_seconds_count 1523
 ```
 
-**Grafana Dashboard Tips:**
+**Grafana Tips:**
 - Alert on `rate(concurrent_limiter_exceeded_total[5m]) > 10`
 - Monitor p99 wait time with histogram quantiles
 - Track cache failures for infrastructure issues
 
-## Cache Failure Handling
+## Cache
 
-By default, if the cache becomes unavailable (e.g., Redis is down), the middleware will let requests through (fail-open). For critical endpoints, you can configure fail-closed behavior:
+### Store Recommendations
+
+The middleware requires a cache store that supports atomic operations:
+
+| Cache Store | Production Ready | Notes |
+|-------------|------------------|-------|
+| **Redis** | Yes | Best choice. Supports locks for atomic operations. |
+| **Memcached** | Yes | Good alternative to Redis. |
+| **DynamoDB** | Yes | Works with Laravel DynamoDB cache driver. |
+| **Database** | Limited | Works but may cause contention under high load. |
+| **File** | No | No locking support. Race conditions possible. |
+| **Array** | No | Only for testing. Data lost between requests. |
+
+Configure in `config/concurrent-limiter.php`:
+
+```php
+'cache_store' => 'redis', // or null to use default
+```
+
+### Key Structure
+
+| Context | Pattern | Example |
+|---------|---------|---------|
+| HTTP requests | `{prefix}{custom_prefix}{user_id\|ip_hash}` | `concurrent-limiter:api:abc123` |
+| Job queue | `{prefix}job:{key}` | `concurrent-limiter:job:stripe-api` |
+| Locks | `{key}:lock` | `concurrent-limiter:api:abc123:lock` |
+
+### Failure Handling
+
+By default, if cache is unavailable, requests are allowed through (fail-open). For critical endpoints:
 
 ```php
 // config/concurrent-limiter.php
@@ -328,64 +334,71 @@ By default, if the cache becomes unavailable (e.g., Redis is down), the middlewa
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
-| `allow` (default) | Let requests through | General APIs, non-critical endpoints |
+| `allow` | Let requests through | General APIs, non-critical endpoints |
 | `reject` | Return 503 error | Payment processing, rate-sensitive operations |
 
-The `CacheOperationFailed` event is dispatched when cache errors occur, allowing you to monitor these failures:
+## Artisan Commands
 
-```php
-use Largerio\LaravelConcurrentLimiter\Events\CacheOperationFailed;
+### Check Counter Status
 
-class LogCacheFailure
-{
-    public function handle(CacheOperationFailed $event): void
-    {
-        Log::error('Cache operation failed', [
-            'exception' => $event->exception->getMessage(),
-            'url' => $event->request->fullUrl(),
-        ]);
-    }
-}
+```bash
+php artisan concurrent-limiter:status {key}
+
+# Example output
+Key: concurrent-limiter:abc123...
+Current count: 3
+Max parallel: 10
+Status: 3/10 slots in use
+```
+
+### Clear Stuck Counters
+
+```bash
+php artisan concurrent-limiter:clear {key} [--force]
+
+# With confirmation
+php artisan concurrent-limiter:clear abc123
+
+# Skip confirmation
+php artisan concurrent-limiter:clear abc123 --force
 ```
 
 ## Troubleshooting
 
 ### Always getting 503 errors
 
-1. **Check your `maxParallel` setting** - It might be too low for your traffic.
-2. **Verify cache is working** - Run `php artisan tinker` and test `Cache::put('test', 1); Cache::get('test');`
-3. **Check for stuck counters** - If your app crashed, counters may not have decremented. They will expire after `maxWaitTime + ttl_buffer` seconds.
+1. **Check `maxParallel` setting** - It might be too low for your traffic
+2. **Verify cache is working** - Test with `Cache::put('test', 1); Cache::get('test');`
+3. **Check for stuck counters** - They expire after `maxWaitTime + ttl_buffer` seconds
 
 ### Requests not being limited
 
-1. **Verify middleware is applied** - Run `php artisan route:list` to check middleware.
-2. **Check cache store** - Using `array` driver? It doesn't persist between requests.
-3. **Different users/IPs** - Each user/IP has their own limit. Check if requests come from different sources.
+1. **Verify middleware is applied** - Run `php artisan route:list`
+2. **Check cache store** - `array` driver doesn't persist between requests
+3. **Different users/IPs** - Each user/IP has their own limit
 
 ### Performance issues
 
-1. **Use Redis** - It's the fastest option with proper locking support.
-2. **Tune polling interval** - The middleware polls every 100ms. This is hardcoded but reasonable for most use cases.
-3. **Reduce `maxWaitTime`** - Lower wait times free up resources faster.
+1. **Use Redis** - Fastest option with proper locking support
+2. **Reduce `maxWaitTime`** - Lower wait times free up resources faster
+3. **Tune `maxParallel`** - Balance between protection and throughput
 
 ### Debugging
 
-Enable logging in your config to see when limits are exceeded:
+Enable logging to see when limits are exceeded:
 
 ```php
 'logging' => [
     'enabled' => true,
-    'channel' => null, // uses default channel
+    'channel' => null,
     'level' => 'warning',
 ],
 ```
 
-You can also listen to events for more detailed monitoring (see Events section above).
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
 This package is open-sourced software licensed under the [MIT license](LICENSE).
-
----
-
-Happy limiting!
