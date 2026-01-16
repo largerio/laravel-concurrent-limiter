@@ -2,6 +2,29 @@
 
 All notable changes to `laravel-concurrent-limiter` will be documented in this file.
 
+## v2.0.0 - 2026-01-16
+
+### Added
+
+- **Job Middleware** (`JobConcurrentLimiter`):
+  - Limit concurrent execution of queued jobs
+  - Parameters: `maxParallel`, `key`, `releaseAfter`, `shouldRelease`
+  - Auto-release jobs back to queue when limit exceeded
+  - Share limits across job classes using the same key
+
+- **Prometheus Metrics**:
+  - `concurrent_limiter_requests_total` counter
+  - `concurrent_limiter_exceeded_total` counter
+  - `concurrent_limiter_cache_failures_total` counter
+  - `concurrent_limiter_wait_seconds` histogram
+  - Configurable `/metrics` HTTP endpoint
+  - Event subscriber for automatic metric collection
+
+- New config options:
+  - `metrics.enabled` - Enable/disable metrics collection
+  - `metrics.route` - Custom route path for metrics endpoint
+  - `metrics.middleware` - Middleware for metrics endpoint
+
 ## v1.3.0 - 2026-01-16
 
 ### Added
